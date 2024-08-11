@@ -34,27 +34,27 @@ jobs:
         CERTIFICATE_P12: ${{ secrets.IOS_DISTRIBUTION_CERT }}
 
     - name: Set up keychain and import certificate
-  run: |
-    # Generate a random password for the keychain
-    export KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+      run: |
+        # Generate a random password for the keychain
+      export KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
     
-    # Create a new keychain with the generated password
-    security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+        # Create a new keychain with the generated password
+      security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
     
-    # Set the new keychain as the default
-    security default-keychain -s build.keychain
+        # Set the new keychain as the default
+      security default-keychain -s build.keychain
     
-    # Unlock the keychain
-    security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+        # Unlock the keychain
+      security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
     
-    # Import the certificate into the keychain
-    security import $RUNNER_TEMP/certificate.p12 -k ~/Library/Keychains/build.keychain -P "$CERT_PASSWORD" -T /usr/bin/codesign
+        # Import the certificate into the keychain
+      security import $RUNNER_TEMP/certificate.p12 -k ~/Library/Keychains/build.keychain -P "$CERT_PASSWORD" -T /usr/bin/codesign
     
-    # Allow codesign to access the keychain
-    security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" ~/Library/Keychains/build.keychain
-  env:
-    CERT_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERT_PASS }}
-
+        # Allow codesign to access the keychain
+      security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" ~/Library/Keychains/build.keychain
+        env:
+      CERT_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERT_PASS }}
+    
 
     - name: Build and archive app
       run: xcodebuild -project testAutomation.xcodeproj -scheme testAutomation-REL -sdk iphoneos -configuration AppStoreDistribution archive -archivePath $PWD/build/testAutomation-REL.xcarchive
