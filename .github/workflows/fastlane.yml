@@ -11,28 +11,53 @@ on:
 jobs:
   build:
     runs-on: macos-latest
-
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v2
 
-    - name: Set up Ruby
+    - name: Set up Ruby environment
       uses: ruby/setup-ruby@v1
       with:
-        ruby-version: 3.2.2
-
-    - name: Install Bundler
-      run: gem install bundler
+        ruby-version: '3.2.2'
 
     - name: Install dependencies
       run: bundle install
 
-    - name: Set up Fastlane environment variables
+    - name: Decode and save provisioning profile
+      run: echo "$PROVISIONING_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/appstore.mobileprovision
       env:
-        FASTLANE_USER: ${{ secrets.FASTLANE_USER }}
-        FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD: ${{ secrets.FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD }}
-      run: echo "Environment variables set"
+        PROVISIONING_PROFILE: ${{ secrets.DISTRIB_PROV_PROFILE }}
 
-    - name: Run Fastlane
-      run: bundle exec fastlane beta
+    - name: Decode and save certificate
+      run: echo "$CERTIFICATE_P12" | base64 --decode > $RUNNER_TEMP/certificate.p12
+      env:
+        CERTIFICATE_P12: ${{ secrets.IOS_DISTRIBUTION_CERT }}
 
+    - name: Set up keychain and import certificate
+  run: |
+    # Generate a random password for the keychain
+    export KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+    
+    # Create a new keychain with the generated password
+    security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+    
+    # Set the new keychain as the default
+    security default-keychain -s build.keychain
+    
+    # Unlock the keychain
+    security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+    
+    # Import the certificate into the keychain
+    security import $RUNNER_TEMP/certificate.p12 -k ~/Library/Keychains/build.keychain -P "$CERT_PASSWORD" -T /usr/bin/codesign
+    
+    # Allow codesign to access the keychain
+    security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" ~/Library/Keychains/build.keychain
+  env:
+    CERT_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERT_PASS }}
+
+
+    - name: Build and archive app
+      run: xcodebuild -project testAutomation.xcodeproj -scheme testAutomation-REL -sdk iphoneos -configuration AppStoreDistribution archive -archivePath $PWD/build/testAutomation-REL.xcarchive
+
+    - name: Export IPA
+      run: xcodebuild -exportArchive -archivePath $PWD/build/testAutomation-REL.xcarchive -exportOptionsPlist exportOptions.plist -exportPath $PWD/build/
