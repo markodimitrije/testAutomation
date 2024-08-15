@@ -23,36 +23,35 @@ jobs:
     - name: Install dependencies
       run: bundle install
 
-    - name: Decode and save provisioning profile
-      run: |
-        mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-        echo "$PROVISIONING_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/appstore.mobileprovision
+    - name: Install the Apple certificate and provisioning profile
       env:
-        PROVISIONING_PROFILE: ${{ secrets.DISTRIB_PROV_PROFILE }}
-
-    - name: Decode and save certificate
-      run: echo "$CERTIFICATE_P12" | base64 --decode > $RUNNER_TEMP/certificate.p12
-      env:
-        CERTIFICATE_P12: ${{ secrets.IOS_DISTRIBUTION_CERT }}
-
-    - name: Set up keychain and import certificate
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERT_PASS }}
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
       run: |
-       # Enable detailed logging for debugging
-         set -x
-       # Generate a random password for the keychain
-         export KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
-       # Create a new keychain with the generated password
-         security create-keychain -p "$KEYCHAIN_PASSWORD" /tmp/build.keychain
-       # Set the new keychain as the default
-         security default-keychain -s /tmp/build.keychain
-       # Unlock the keychain
-         security unlock-keychain -p "$KEYCHAIN_PASSWORD" /tmp/build.keychain
-       # Set permissions on the keychain
-         sudo chmod -R 777 /tmp/build.keychain
-       # Import the certificate into the keychain
-         security import $RUNNER_TEMP/certificate.p12 -k /tmp/build.keychain -P "" -T /usr/bin/codesign
-       # Allow codesign to access the keychain
-         security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" /tmp/build.keychain
+          # create variables
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          PP_PATH=$RUNNER_TEMP/appstore.mobileprovision
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+          # import certificate and provisioning profile from secrets
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+          echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o $PP_PATH
+
+          # create temporary keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          # import certificate to keychain
+          security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+          # apply provisioning profile
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles
 
     - name: Build and archive app
       run: xcodebuild -project testAutomation.xcodeproj -scheme testAutomation-REL -sdk iphoneos -configuration AppStoreDistribution archive -archivePath $PWD/build/testAutomation-REL.xcarchive
