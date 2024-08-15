@@ -32,7 +32,7 @@ jobs:
       run: |
           # create variables
           CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
-          PP_PATH=$RUNNER_TEMP/appstore.mobileprovision
+          PP_PATH="$RUNNER_TEMP/AppStore Distribution profile for testAutomation.mobileprovision"
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
 
           # import certificate and provisioning profile from secrets
